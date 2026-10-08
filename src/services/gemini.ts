@@ -3,9 +3,7 @@ import { experience } from "@/data/experience";
 import { projects } from "@/data/projects";
 import { skills } from "@/data/skills";
 
-// Initialize Gemini API
-// Note: In a production environment, you should use a backend proxy to hide your API key.
-// For this portfolio, we'll use an environment variable.
+
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 
 const genAI = new GoogleGenerativeAI(API_KEY);
@@ -23,10 +21,10 @@ const getSystemContext = () => {
     ).join("\n\n");
 
     return `
-    You are an intelligent virtual assistant for Rishav Raj's portfolio website.
-    Your goal is to answer visitor questions about Rishav's professional background, skills, and projects.
+    You are an intelligent virtual assistant for Khushi Pal's portfolio website.
+    Your goal is to answer visitor questions about Khushi's professional background, skills, and projects.
     
-    Here is Rishav's profile data:
+    Here is Khushi's profile data:
     
     SKILLS:
     ${skillsList}
@@ -38,12 +36,12 @@ const getSystemContext = () => {
     ${projectsList}
     
     CONTACT INFO:
-    Email: rishavraj543256@gmail.com
+    Email: palkhushi163@gmail.com
     
     INSTRUCTIONS:
     1. Be professional, friendly, and concise.
-    2. Answer in the first person plural (e.g., "We", "Rishav") or third person ("Rishav is...").
-    3. If asked about something not in the data, politely say you don't have that information but they can contact Rishav directly.
+    2. Answer in the first person plural (e.g., "We", "Khushi") or third person ("Khushi is...").
+    3. If asked about something not in the data, politely say you don't have that information but they can contact Khushi directly.
     4. Keep responses short (under 3 sentences) unless asked for details.
     5. Highlight relevant skills or projects when answering general questions.
     6. If the API key is missing or invalid, apologize and provide basic info.
@@ -53,13 +51,13 @@ const getSystemContext = () => {
 export const getGeminiResponse = async (userMessage: string) => {
     if (!API_KEY) {
         return {
-            text: "I'm currently offline because my AI brain (API Key) isn't configured yet. Please contact Rishav directly!",
+            text: "I'm currently offline because my AI brain (API Key) isn't configured yet. Please contact Khushi directly!",
             options: ["Contact Info"]
         };
     }
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
 
         const prompt = `
       ${getSystemContext()}
@@ -69,7 +67,27 @@ export const getGeminiResponse = async (userMessage: string) => {
       Answer:
     `;
 
-        const result = await model.generateContent(prompt);
+        // Gemini occasionally returns 503 "model overloaded" during traffic
+        // spikes — this is temporary on Google's side, not a code issue, so
+        // retry a couple of times with a short backoff before giving up.
+        let result;
+        let lastError: unknown;
+        const maxAttempts = 3;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                result = await model.generateContent(prompt);
+                lastError = null;
+                break;
+            } catch (err) {
+                lastError = err;
+                const message = err instanceof Error ? err.message : String(err);
+                const isOverloaded = message.includes("503") || message.toLowerCase().includes("overload") || message.toLowerCase().includes("high demand");
+                if (!isOverloaded || attempt === maxAttempts) throw err;
+                await new Promise((r) => setTimeout(r, attempt * 800)); // 800ms, then 1600ms
+            }
+        }
+        if (!result) throw lastError;
+
         const response = await result.response;
         const text = response.text();
 
@@ -83,8 +101,12 @@ export const getGeminiResponse = async (userMessage: string) => {
         return { text, options };
     } catch (error) {
         console.error("Gemini API Error:", error);
+        const message = error instanceof Error ? error.message : String(error);
+        const isOverloaded = message.includes("503") || message.toLowerCase().includes("overload") || message.toLowerCase().includes("high demand");
         return {
-            text: "I'm having trouble connecting to my AI services right now. Please try again later or contact Rishav directly.",
+            text: isOverloaded
+                ? "My AI service is a bit busy right now (high demand on Google's side). Please try again in a moment!"
+                : "I'm having trouble connecting to my AI services right now. Please try again later or contact Khushi directly.",
             options: ["Contact Info"]
         };
     }
